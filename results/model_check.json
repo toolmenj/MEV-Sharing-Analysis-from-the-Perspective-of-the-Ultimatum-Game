@@ -1,0 +1,297 @@
+{
+  "first_price_bruteforce": [
+    {
+      "values": [
+        1.0,
+        0.7,
+        0.4
+      ],
+      "L": 0.2,
+      "equilibrium_winning_bids": [
+        0.65,
+        0.7
+      ],
+      "theory_max_V2_L": 0.7
+    },
+    {
+      "values": [
+        1.0,
+        0.3,
+        0.1
+      ],
+      "L": 0.5,
+      "equilibrium_winning_bids": [
+        0.5
+      ],
+      "theory_max_V2_L": 0.5
+    },
+    {
+      "values": [
+        1.0,
+        0.6
+      ],
+      "L": 0.0,
+      "equilibrium_winning_bids": [
+        0.55,
+        0.6
+      ],
+      "theory_max_V2_L": 0.6
+    },
+    {
+      "values": [
+        1.0
+      ],
+      "L": 0.25,
+      "equilibrium_winning_bids": [
+        0.25
+      ],
+      "theory_max_V2_L": 0.25
+    },
+    {
+      "values": [
+        1.0
+      ],
+      "L": 0.0,
+      "equilibrium_winning_bids": [
+        0.0
+      ],
+      "theory_max_V2_L": 0.0
+    }
+  ],
+  "share_vs_n": {
+    "uniform_sim": {
+      "2": 0.49964743506586196,
+      "3": 0.6659723044920609,
+      "4": 0.7501783714745204,
+      "5": 0.7996530085363778,
+      "8": 0.8752363871833376,
+      "12": 0.9165404378261202,
+      "20": 0.9499564676984458,
+      "30": 0.9667826864467427
+    },
+    "uniform_theory": {
+      "2": 0.5,
+      "3": 0.6666666666666666,
+      "4": 0.75,
+      "5": 0.8,
+      "8": 0.875,
+      "12": 0.9166666666666666,
+      "20": 0.95,
+      "30": 0.9666666666666667
+    },
+    "lognormal_sim": {
+      "2": 0.4271198547845175,
+      "3": 0.512738853371764,
+      "4": 0.5563321492395035,
+      "5": 0.5811454942128781,
+      "8": 0.6219920523962744,
+      "12": 0.6495981939964386,
+      "20": 0.6761152735983987,
+      "30": 0.6938187557779384
+    }
+  },
+  "fs_threshold": [
+    {
+      "alpha": 0,
+      "numeric_threshold": 0.0,
+      "formula_alpha_over_1_plus_2alpha": 0.0
+    },
+    {
+      "alpha": 0.5,
+      "numeric_threshold": 0.25,
+      "formula_alpha_over_1_plus_2alpha": 0.25
+    },
+    {
+      "alpha": 1,
+      "numeric_threshold": 0.33334,
+      "formula_alpha_over_1_plus_2alpha": 0.3333333333333333
+    },
+    {
+      "alpha": 4,
+      "numeric_threshold": 0.44445,
+      "formula_alpha_over_1_plus_2alpha": 0.4444444444444444
+    },
+    {
+      "alpha": 50,
+      "numeric_threshold": 0.49505000000000005,
+      "formula_alpha_over_1_plus_2alpha": 0.49504950495049505
+    }
+  ],
+  "fs_threshold_with_outside_option": [
+    {
+      "alpha": 0.5,
+      "beta": 0.0,
+      "L": 0.1,
+      "numeric_threshold": 0.30000000000000004,
+      "formula": 0.3
+    },
+    {
+      "alpha": 1,
+      "beta": 0.25,
+      "L": 0.2,
+      "numeric_threshold": 0.38334,
+      "formula": 0.3833333333333333
+    },
+    {
+      "alpha": 4,
+      "beta": 0.6,
+      "L": 0.3,
+      "numeric_threshold": 0.45778,
+      "formula": 0.4577777777777778
+    },
+    {
+      "alpha": 1,
+      "beta": 0.25,
+      "L": 0.0,
+      "numeric_threshold": 0.33334,
+      "formula": 0.3333333333333333
+    },
+    {
+      "alpha": 0,
+      "beta": 0.0,
+      "L": 0.2,
+      "numeric_threshold": 0.2,
+      "formula": 0.2
+    }
+  ],
+  "fs_proposer_optimal_offer": {
+    "0": {
+      "optimal_offer": 0.3333,
+      "expected_utility": 0.6,
+      "table": [
+        {
+          "offer": 0.0,
+          "accept_prob": 0.3,
+          "expected_utility": 0.3
+        },
+        {
+          "offer": 0.25,
+          "accept_prob": 0.6,
+          "expected_utility": 0.45
+        },
+        {
+          "offer": 0.3333,
+          "accept_prob": 0.9,
+          "expected_utility": 0.6
+        },
+        {
+          "offer": 0.4444,
+          "accept_prob": 1.0,
+          "expected_utility": 0.5556
+        },
+        {
+          "offer": 0.5,
+          "accept_prob": 1.0,
+          "expected_utility": 0.5
+        }
+      ],
+      "_exact": 0.3333333333333333
+    },
+    "0.25": {
+      "optimal_offer": 0.4444,
+      "expected_utility": 0.5278,
+      "table": [
+        {
+          "offer": 0.0,
+          "accept_prob": 0.3,
+          "expected_utility": 0.225
+        },
+        {
+          "offer": 0.25,
+          "accept_prob": 0.6,
+          "expected_utility": 0.375
+        },
+        {
+          "offer": 0.3333,
+          "accept_prob": 0.9,
+          "expected_utility": 0.525
+        },
+        {
+          "offer": 0.4444,
+          "accept_prob": 1.0,
+          "expected_utility": 0.5278
+        },
+        {
+          "offer": 0.5,
+          "accept_prob": 1.0,
+          "expected_utility": 0.5
+        }
+      ],
+      "_exact": 0.4444444444444444
+    },
+    "0.6": {
+      "optimal_offer": 0.5,
+      "expected_utility": 0.5,
+      "table": [
+        {
+          "offer": 0.0,
+          "accept_prob": 0.3,
+          "expected_utility": 0.12
+        },
+        {
+          "offer": 0.25,
+          "accept_prob": 0.6,
+          "expected_utility": 0.27
+        },
+        {
+          "offer": 0.3333,
+          "accept_prob": 0.9,
+          "expected_utility": 0.42
+        },
+        {
+          "offer": 0.4444,
+          "accept_prob": 1.0,
+          "expected_utility": 0.4889
+        },
+        {
+          "offer": 0.5,
+          "accept_prob": 1.0,
+          "expected_utility": 0.5
+        }
+      ],
+      "_exact": 0.5
+    }
+  },
+  "fs_population_prediction": {
+    "mean_offer_share": 0.4333,
+    "accept_rate": 0.97
+  },
+  "prob_fairness_threshold_binds_uniform": {
+    "1": {
+      "0": 0.0,
+      "0.5": 1.0,
+      "1": 1.0,
+      "4": 1.0
+    },
+    "2": {
+      "0": 0.0,
+      "0.5": 0.25033,
+      "1": 0.333475,
+      "4": 0.44477
+    },
+    "3": {
+      "0": 0.0,
+      "0.5": 0.06361,
+      "1": 0.11228,
+      "4": 0.198475
+    },
+    "5": {
+      "0": 0.0,
+      "0.5": 0.003965,
+      "1": 0.012425,
+      "4": 0.03976
+    },
+    "10": {
+      "0": 0.0,
+      "0.5": 5e-06,
+      "1": 5.5e-05,
+      "4": 0.000735
+    },
+    "20": {
+      "0": 0.0,
+      "0.5": 0.0,
+      "1": 0.0,
+      "4": 0.0
+    }
+  }
+}

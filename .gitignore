@@ -1,0 +1,17 @@
+# 相依套件與編譯產物（npm install / npx hardhat compile 可重建）
+node_modules/
+contracts/artifacts/
+contracts/cache/
+
+# 鏈上原始資料（約 250 MB，用 analysis/01–03 的腳本重抓）
+data/raw/
+
+# 執行紀錄與暫存
+*.log
+__pycache__/
+*.pyc
+
+# 金鑰
+.env
+.env.*
+secrets.env

@@ -1,0 +1,58 @@
+{
+  "note": "模擬玩家，本機 Hardhat 鏈；不是真人實驗",
+  "seed": 20261118,
+  "games_per_treatment": 200,
+  "pot_wei": "10000000000000000",
+  "deposit_wei": "1000000000000000",
+  "no_reveal_rate": 0.05,
+  "fs_proposer_offer_units_by_beta": {
+    "0": 334,
+    "0.25": 445,
+    "0.6": 500
+  },
+  "fs_threshold_units_by_alpha": {
+    "0": 0,
+    "1": 334,
+    "4": 445,
+    "0.5": 250
+  },
+  "summary": {
+    "SPE_vs_SPE": {
+      "games": 200,
+      "settled": 183,
+      "accepted": 183,
+      "rejected": 0,
+      "defaulted": 17,
+      "accept_rate": 1,
+      "mean_offer_share": 0.0010000000000000007,
+      "mean_proposer_payoff_share": 0.9989999999999972,
+      "mean_responder_payoff_share": 0.0010000000000000007
+    },
+    "SPE_vs_FS": {
+      "games": 200,
+      "settled": 179,
+      "accepted": 55,
+      "rejected": 124,
+      "defaulted": 21,
+      "accept_rate": 0.30726256983240224,
+      "mean_offer_share": 0.0010000000000000007,
+      "mean_proposer_payoff_share": 0.30695530726257003,
+      "mean_responder_payoff_share": 0.00030726256983240244
+    },
+    "FS_vs_FS": {
+      "games": 200,
+      "settled": 179,
+      "accepted": 173,
+      "rejected": 6,
+      "defaulted": 21,
+      "accept_rate": 0.9664804469273743,
+      "mean_offer_share": 0.43763687150838004,
+      "mean_proposer_payoff_share": 0.5400391061452515,
+      "mean_responder_payoff_share": 0.4264413407821232
+    }
+  },
+  "event_vs_intended_mismatches": 0,
+  "total_paid_in_wei": "7200000000000000000",
+  "total_withdrawn_wei": "7200000000000000000",
+  "contract_leftover_wei": "0"
+}
