@@ -533,7 +533,7 @@ Gas 用量（`results/contract_test_output.txt:60-76`）：
 
 **可能被問：**
 
-- $\alpha$、$eta$ 的數值哪來的？——Fehr & Schmidt (1999) 表 III 的實驗分布。
+- $\alpha$、$\beta$ 的數值哪來的？——Fehr & Schmidt (1999) 表 III 的實驗分布。
 - Proposer 是程式在選，談公平偏好有意義嗎？——這正是我們的結論：機制本身讓公平偏好沒有作用。值得擔心的是競爭消失時，Proposer 沒有公平偏好可以保護，只剩外部選項。
 
 ### 6.3 第三部分　鏈上資料實證（第 8–10 張）
