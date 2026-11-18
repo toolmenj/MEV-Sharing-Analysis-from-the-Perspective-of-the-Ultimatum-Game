@@ -113,8 +113,12 @@ out["daily"] = daily.reset_index().to_dict("records")
 # ---------------------------------------------------------------- 3. 抽樣 slot 的全部出價
 sample = json.loads((RAW / "sample_slots.json").read_text(encoding="utf-8"))
 chain = {int(r["slot"]): r for r in jl(RAW / "chain_sample.jsonl")}
+payfix = {int(r["slot"]): r for r in jl(RAW / "chain_payment_fix.jsonl")}
 recs = []
 bid_counts = []
+slot_relays = dl.groupby("slot")["relay"].agg(set).to_dict()
+relay_seen, relay_has_win = Counter(), Counter()
+per_relay_counts = defaultdict(list)
 for s in sample:
     p = RAW / "bids" / f"{s}.json.gz"
     if not p.exists() or s not in win.index:
@@ -124,6 +128,7 @@ for s in sample:
     w = win.loc[s]
     bids = []
     for relay, lst in rec["relays"].items():
+        per_relay_counts[relay].append(len(lst))
         for bpk, val, ts, bh in lst:
             bids.append((bpk.lower(), int(val), int(ts), bh.lower(), relay))
     if not bids:
@@ -132,12 +137,51 @@ for s in sample:
     w_entity = w["entity"]
     w_val = int(w["value_wei"])
     # 得標那筆出價送達 relay 的時間（取各 relay 中最早的）
-    w_ts = [b[2] for b in bids if b[3] == w["block_hash"]]
+    # proposer 只看得到自己連線的 relay → 只用「有交付這個區塊的 relay」上的出價
+    rset = slot_relays[s]
+    for relay in rset:
+        relay_seen[relay] += 1
+        relay_has_win[relay] += any(b[3] == w["block_hash"] and b[4] == relay for b in bids)
+    bids_in = [b for b in bids if b[4] in rset]
+    w_ts = [b[2] for b in bids_in if b[3] == w["block_hash"]]
     found = len(w_ts) > 0
     t_win = min(w_ts) if found else None
     ent = lambda k: pk_to_entity.get(k, k)
-    rivals_all = [b for b in bids if ent(b[0]) != w_entity]
-    rivals_before = [b for b in rivals_all if found and b[2] <= t_win]
+
+    def active_best(cutoff):
+        """各 (pubkey, relay) 在 cutoff 之前的「最後一筆」出價才是有效出價（新出價會取代舊的，可以改低）。
+        回傳對手實體中最高的有效出價。"""
+        latest = {}
+        for bpk, val, ts, bh, relay in bids_in:
+            if ent(bpk) == w_entity or (cutoff is not None and ts > cutoff):
+                continue
+            k = (bpk, relay)
+            if k not in latest or ts > latest[k][0]:
+                latest[k] = (ts, val)
+        return max((v for _, v in latest.values()), default=None)
+
+    # 穩健性檢查：只看「出價清單完整」的單一 relay（不會被 500 筆上限截斷），在同一個 relay 內比較
+    single = np.nan
+    for relay in ("bloxroute_regulated", "flashbots", "agnostic"):
+        if relay not in rset:
+            continue
+        own = [b for b in bids if b[4] == relay]
+        tw = [b[2] for b in own if b[3] == w["block_hash"]]
+        if not tw:
+            continue
+        latest = {}
+        for bpk, val, ts, bh, _ in own:
+            if ent(bpk) != w_entity and ts <= min(tw) and (bpk not in latest or ts > latest[bpk][0]):
+                latest[bpk] = (ts, val)
+        if latest:
+            single = max(v for _, v in latest.values()) / w_val
+        break
+
+    rb = active_best(t_win) if found else None
+    ra_ = active_best(None)
+    rivals_before = [1] if rb is not None else []
+    rivals_all = [(0, ra_ or 0)]
+    rival_max_ever = max((b[1] for b in bids_in if ent(b[0]) != w_entity and found and b[2] <= t_win), default=0)
     entities_bidding = {ent(b[0]) for b in bids}
     slot_start_ms = (GENESIS + s * 12) * 1000
     r = {
@@ -147,8 +191,11 @@ for s in sample:
         "winning_bid_found": found,
         "n_bids": len(bids), "n_entities": len(entities_bidding),
         "n_pubkeys": len({b[0] for b in bids}),
-        "rival_best_before_eth": max((b[1] for b in rivals_before), default=0) / ETH if found else np.nan,
-        "rival_best_any_eth": max((b[1] for b in rivals_all), default=0) / ETH,
+        "rival_best_before_eth": (rb or 0) / ETH if found else np.nan,
+        "rival_best_any_eth": (ra_ or 0) / ETH,
+        "rival_max_ever_before_eth": rival_max_ever / ETH,
+        "ratio_single_complete_relay": single,
+        "n_relays_delivered": len(rset),
         "has_rival_before": len(rivals_before) > 0,
         "win_time_ms_in_slot": (t_win - slot_start_ms) if found else np.nan,
         "hour_hhi": hourly_hhi.get(int(w["hour_bin"]), np.nan),
@@ -157,9 +204,17 @@ for s in sample:
     c = chain.get(s)
     if c and c["hash_matches_relay"]:
         delta = (c["miner_balance_after"] - c["miner_balance_before"]) / ETH
-        pay_ok = (c["last_tx_from"] == c["miner"] and c["last_tx_to"] == w["proposer_fee_recipient"])
+        # 付款型態：miner 位址直接付（最後一筆交易金額 = 得標價）／另一個位址付／找不到
+        if c["last_tx_from"] == c["miner"] and c["last_tx_value"] == w_val:
+            kind = "miner"
+        else:
+            fx = payfix.get(s)
+            kind = fx["kind"] if fx else "unknown"
+            if kind == "other":  # builder 用另一個位址付款 → 把那個位址的餘額變化也算進 builder 淨收入
+                delta += (fx["payer_balance_after"] - fx["payer_balance_before"]) / ETH
+        pay_ok = kind in ("miner", "other")
         r.update({
-            "chain_ok": True, "miner": c["miner"],
+            "chain_ok": True, "miner": c["miner"], "payment_kind": kind,
             "miner_is_proposer": c["miner"] == w["proposer_fee_recipient"],
             "payment_tx_from_miner": bool(pay_ok),
             "last_tx_value_eth": (c["last_tx_value"] or 0) / ETH,
@@ -179,6 +234,9 @@ out["sample"] = {
     "min_entities_per_slot": int(df["n_entities"].min()), "max_entities_per_slot": int(df["n_entities"].max()),
     "winning_bid_found_in_bids": int(df["winning_bid_found"].sum()),
     "chain_ok": int(df["chain_ok"].sum()),
+    # 各 relay：有交付的 slot 中，回傳的出價清單裡找得到得標那筆的比例（找不到代表該 relay 的出價清單不完整）
+    "winning_bid_found_rate_by_delivering_relay": {r: [int(relay_has_win[r]), int(relay_seen[r])] for r in relay_seen},
+    "bids_per_slot_by_relay_median_max": {r: [float(np.median(v)), int(max(v))] for r, v in per_relay_counts.items()},
 }
 
 
@@ -200,6 +258,19 @@ out["second_price"] = {
     "share_within_10pct": float((a["margin_before"].abs() <= 0.10).mean()),
     "share_margin_over_20pct": float((a["margin_before"] > 0.20).mean()),
     "share_rival_higher_than_winner": float((a["ratio_before"] > 1).mean()),
+    "share_rival_higher_by_over_1pct": float((a["ratio_before"] > 1.01).mean()),
+    "share_rival_below_90pct": float((a["ratio_before"] < 0.9).mean()),
+    "share_rival_below_50pct": float((a["ratio_before"] < 0.5).mean()),
+    "single_complete_relay": {
+        **q(df["ratio_single_complete_relay"]),
+        "share_within_1pct": float(((df["ratio_single_complete_relay"].dropna() - 1).abs() <= 0.01).mean()),
+        "share_within_5pct": float(((df["ratio_single_complete_relay"].dropna() - 1).abs() <= 0.05).mean()),
+        "share_rival_higher_by_over_1pct": float((df["ratio_single_complete_relay"].dropna() > 1.01).mean()),
+        "share_rival_below_90pct": float((df["ratio_single_complete_relay"].dropna() < 0.9).mean()),
+    },
+    "median_gap_eth": float((a["winning_bid_eth"] - a["rival_best_before_eth"]).median()),
+    "naive_max_ever_over_winning": q(a["rival_max_ever_before_eth"] / a["winning_bid_eth"]),
+    "by_winner_top2": {str(k): q(v["ratio_before"]) for k, v in a.groupby("winner_is_top2")},
     "rival_any_time_over_winning": q(df["ratio_any"]),
     "corr_log_win_log_rival": float(np.corrcoef(np.log(a["winning_bid_eth"]), np.log(a["rival_best_before_eth"].clip(lower=1e-9)))[0, 1]),
     "slots_without_rival_before": int((df["winning_bid_found"] & ~df["has_rival_before"]).sum()),
@@ -225,6 +296,10 @@ out["proposer_share"] = {
     "block_value_eth": q(valid["block_value_eth"]),
     "builder_net_eth": q(valid["builder_net_eth"]),
     "by_winner_top2": {str(k): q(v["share"]) for k, v in valid.groupby("winner_is_top2")},
+    "payment_kind_counts": c["payment_kind"].value_counts().to_dict(),
+    "share_miner_paid_only": q(valid[valid["payment_kind"] == "miner"]["share"]),
+    "by_winner_label": {str(k): {**q(v["share"]), "builder_net_eth_sum": float(v["builder_net_eth"].sum())}
+                        for k, v in valid.groupby("winner_label") if len(v) >= 20},
 }
 valid = valid.merge(a[["slot", "ratio_before"]], on="slot", how="left")
 valid["rival_over_value"] = valid["rival_best_before_eth"] / valid["block_value_eth"]
@@ -345,7 +420,8 @@ fig, ax = plt.subplots(figsize=(6, 3.8))
 top = share.iloc[:8]
 ax.bar(range(len(top)), top.values, color="#4477aa")
 ax.set_xticks(range(len(top)))
-ax.set_xticklabels([(entity_label.get(e, "") or e[:8])[:14] for e in top.index], rotation=40, ha="right", fontsize=8)
+ascii_only = lambda t: t.encode("ascii", "ignore").decode().strip()
+ax.set_xticklabels([(ascii_only(entity_label.get(e, "")) or e[:8])[:22] for e in top.index], rotation=40, ha="right", fontsize=8)
 ax.set_ylabel("share of MEV-Boost blocks")
 fig.tight_layout(); fig.savefig(FIG / "emp_builder_share.png", dpi=160); plt.close(fig)
 

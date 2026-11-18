@@ -2,7 +2,7 @@
 
 **區塊鏈導論 第四組**　鄧杰修、曾士育、林玎揚、周家釩
 
-<!--ABSTRACT-->
+> **摘要**　我們把以太坊 MEV-Boost 中 Builder 付錢給 Proposer 的過程，看成一個「有很多提議者、回應者有退路」的最後通牒賽局。理論上，均衡的付款金額是 $\max(V_2, L)$：第二強 Builder 的區塊價值與 Proposer 自己建塊價值中較大的那個；公平偏好只有在第二名很弱時才有作用。我們用 2026 年 11 月 4 日至 18 日共 14 天、92,587 個區塊的 relay 公開資料檢驗：得標價與對手最高出價的比值中位數為 0.9997，73% 的區塊差距在 5% 以內，符合「競爭定價」；但 Proposer 只拿到區塊價值的 64%（中位數），市占 53% 的最大 Builder 留下的比例最高，顯示第一名與第二名之間有一段靠獨家訂單流撐出來的差距。外部選項只在約 4% 的區塊可能是決定因素，鏈上也看不到公平偏好的痕跡。另外我們實作了 commit-reveal 的最後通牒賽局合約（27 項測試通過），並用模擬玩家驗證流程，作為未來真人實驗的平台。
 
 ---
 
@@ -207,7 +207,151 @@ $$
 - 公平偏好在鏈上**觀察不到**也不需要存在：MEV-Boost 軟體本來就機械式地選最高出價。唯一接近「門檻」的東西是驗證者可以設定的最低出價（min-bid），但那是用外部選項 $L$ 在比，不是用公平在比；
 - 一旦某個 slot 只有一家 Builder 有能力拿到那筆價值（$V_2 \ll V_1$），結果就退回最後通牒，而這時鏈上沒有公平偏好可以保護 Proposer。
 
-<!--PART3-->
+---
+
+## 第三部分　鏈上資料實證
+
+### 3.1 資料
+
+全部來自公開來源，程式在 `analysis/`，可重跑。
+
+| 資料 | 來源 | 範圍 | 筆數 |
+|---|---|---|---|
+| 被 Proposer 採用的區塊 | 7 個 MEV-Boost relay 的 `proposer_payload_delivered` | 2026-11-04 07:24 ～ 11-18 07:23（UTC），共 100,800 個 slot（14 天） | 92,587 個 slot 有交付紀錄（91.9%） |
+| 每個 slot 的全部出價 | 同 7 個 relay 的 `builder_blocks_received` | 從上面隨機抽 1,000 個 slot | 每個 slot 中位數 5,418 筆出價 |
+| 區塊內容與餘額 | 公開以太坊節點（歷史餘額查詢） | 同 1,000 個 slot 的得標區塊 | 1,000 個，區塊雜湊全部與 relay 紀錄相符 |
+| 疑似自建區塊 | 同上 | 同期間隨機抽 3,000 個區塊 | 225 個沒有任何 relay 交付紀錄 |
+
+7 個 relay 為 ultrasound、Titan、Aestus、bloXroute（regulated）、Flashbots、Agnostic、ETHGas；bloXroute（max-profit）與 Manifold 連不上，未納入。
+
+**怎麼量三個關鍵變數：**
+
+- **得標價 $s$**：relay 申報、付給 Proposer 的金額。
+- **對手最高出價（$V_2$ 的代理）**：在「得標那筆出價送達的當下」，其他 Builder 在 Proposer 有連線的 relay 上仍有效的最高出價。兩個細節：(1) Builder 的新出價會取代舊出價、可以改低，所以每個 Builder 只算最後一筆；(2) 同一家 Builder 有多把金鑰，我們用區塊的手續費收款位址把 79 把得標金鑰歸成 26 家。
+- **區塊總價值 $V$（$V_1$ 的代理）**：Builder 收款位址在該區塊前後的餘額變化，加回付給 Proposer 的金額。也就是「流進 Builder 手上的全部手續費與小費」。
+
+### 3.2 市場概況：Builder 高度集中
+
+![Builder 市占](figures/emp_builder_share.png)
+
+14 天內得標區塊的市占：Titan 53.0%、Quasar 18.4%、BuilderNet 12.7%、Eureka 7.6%、bombora 3.3%。前三家合計 84.1%，HHI 為 0.338（一般把 0.25 以上視為高度集中）。資料完整的 13 天中，每日 HHI 都在 0.32–0.36 之間，很穩定。
+
+但「得標集中」不等於「沒有競爭」：抽樣的 1,000 個 slot 中，每個 slot 有出價的 Builder 中位數是 21 家（最少 6 家、最多 34 家）。這正是第一部分的重點——要看的是第二名有多強，而不是家數。
+
+得標價中位數 0.0076 ETH、平均 0.0271 ETH，平均遠大於中位數，表示價值分布是厚尾的。
+
+![每日集中度與得標價](figures/emp_daily.png)
+
+### 3.3 預測一：得標價貼近對手的最高出價 —— 成立
+
+在找得到得標出價時間的 697 個 slot 中，計算「對手最高有效出價 ÷ 得標價」：
+
+| | 數值 |
+|---|---|
+| 中位數 | 0.9997 |
+| 第 25 ～ 75 百分位 | 0.985 ～ 1.003 |
+| 差距在 1% 以內的 slot | 51.2% |
+| 差距在 5% 以內 | 73.3% |
+| 差距在 10% 以內 | 82.6% |
+| 對手不到得標價九成（得標者明顯領先） | 6.6% |
+| 對手不到得標價五成（接近最後通牒） | 0.4% |
+
+對數迴歸 $\log(\text{得標價}) = a + b \log(\text{對手最高出價})$ 的斜率為 0.960（標準誤 0.016），$R^2 = 0.90$。模型預測斜率為 1。
+
+![對手出價與得標價的比值](figures/emp_rival_ratio_hist.png)
+
+（比值大於 1.2 的 slot 都併入最右邊那一格。）
+
+![得標價對對手最高出價](figures/emp_win_vs_rival.png)
+
+**得標價幾乎就是「第二強的 Builder 願意出的價」**，符合命題 3 的 $s^* = \max(V_2, L)$。真正接近最後通牒（對手不到五成）的 slot 只有 0.4%。
+
+**資料限制與穩健性.** 有 19.8% 的 slot 算出來對手比得標價還高 1% 以上，這在單一拍賣裡不該發生。原因是資料不完整：Titan 與 Aestus 兩個 relay 每個 slot 最多只回傳 500 筆出價，清單被截斷；另外各 relay 的回應有時間差，Proposer 不一定拿到每個 relay 的最新出價。為此我們另外只用**出價清單完整的單一 relay**（bloXroute、Flashbots、Agnostic）在同一個 relay 內比較，共 347 個 slot：中位數 0.993，67.4% 在 5% 以內，對手高出 1% 以上的比例降到 10.1%，對手不到九成的占 14.7%。結論不變，但得標者的領先幅度比主要估計略大。
+
+### 3.4 預測二：分潤比例由對手強度決定 —— 部分成立，而且 Builder 留下的比想像中多
+
+可以算分潤比例的有 855 個 slot（另外 145 個區塊找不到付款交易，推測是用合約內部轉帳付款，量不到，已排除）。
+
+![Proposer 分潤比例分布](figures/emp_share_hist.png)
+
+| Proposer 分潤比例 $s/V$ | 數值 |
+|---|---|
+| 中位數 | 64.2% |
+| 平均 | 65.2% |
+| 第 5 ～ 95 百分位 | 32.9% ～ 99.5% |
+| 加總（所有付款 ÷ 所有區塊價值） | 63.3% |
+| 低於 50% 的 slot | 20.9% |
+| 低於 20% 的 slot | 2.1% |
+| 高於 100%（Builder 倒貼） | 4.3% |
+
+**解讀：**
+
+1. 分潤中位數 64%，明顯高於最後通牒實驗的四到五成，但離「完全競爭 = 100%」還很遠。Builder 平均留下三成多。
+2. 這與預測一並不矛盾：價格確實貼著第二名的出價，但**第一名的區塊價值比第二名願意出的價高出一截**。用模型的話說，$V_2/V_1$ 大約是六成多，而不是接近 1。合理的解釋是得標 Builder 有對手拿不到的獨家訂單流。
+3. 不同 Builder 差很多：
+
+| 得標 Builder | slot 數 | 分潤中位數 |
+|---|---|---|
+| Titan（市占第 1） | 435 | 57.8% |
+| BuilderNet | 126 | 61.9% |
+| Eureka | 50 | 65.9% |
+| Quasar（市占第 2） | 171 | 76.7% |
+| bombora | 29 | 90.1% |
+| Builder+ | 27 | 108.2%（倒貼搶市占） |
+
+市占最大的 Titan 留下最多；小 Builder 幾乎全數交出，甚至倒貼。
+
+**迴歸**（應變數：分潤比例；OLS，異質變異穩健標準誤；n = 700）：
+
+| 解釋變數 | (1) | (2) |
+|---|---|---|
+| 對手最高出價 ÷ 區塊價值 | **0.562**（0.050） | — |
+| 得標者是前兩大 Builder | **−0.060**（0.015） | **−0.106**（0.018） |
+| log（區塊價值） | **−0.026**（0.009） | **−0.064**（0.012） |
+| log（出價的 Builder 家數） | 0.037（0.036） | 0.051（0.047） |
+| 該小時的 HHI | 0.004（0.090） | 0.076（0.116） |
+| $R^2$ | 0.55 | 0.13 |
+
+括號內為標準誤，粗體為 1% 水準下顯著。
+
+- **對手越強，Proposer 分得越多**（係數 0.56）：符合預測二的方向。係數小於 1，表示對手的出價不是 $V_2$ 的完美代理（對手也不會把自己的價值全部出完）。
+- **家數與 HHI 都不顯著**：呼應命題 3——決定分潤的是第二名的強度，不是市場上有幾家或集中度指標。（HHI 在 14 天內幾乎沒有變化，也使它難以被檢定。）
+- **前兩大 Builder 得標時，Proposer 少拿 6～11 個百分點**；**區塊價值越大，Proposer 分潤越低**。後者正是命題 4 後面提到的厚尾效果：大額 MEV 出現時，拿到它的 Builder 領先幅度變大，那個 slot 就更接近最後通牒。
+
+![分潤比例對對手強度](figures/emp_share_vs_rival.png)
+
+**量測上的重要限制.** 我們量的「Builder 留下的部分」是毛額。Builder 事後會把一部分退給提供訂單流的人（退款通常不在同一個區塊內），這部分我們量不到，所以 Builder 的真實利潤比圖上看到的低，三成多是上限而不是利潤率。
+
+### 3.5 預測三：外部選項很少是決定因素 —— 成立，但對 $L$ 的假設敏感
+
+$L$ 無法直接觀察。我們用「沒有任何 relay 交付紀錄的區塊」當作 Proposer 自己建塊的代理：隨機抽的 3,000 個區塊中有 225 個（7.5%），其價值（收款位址餘額變化）中位數為 0.0030 ETH（第 25 ～ 75 百分位 0.0022 ～ 0.0045）。同期間 MEV-Boost 得標價中位數是 0.0076 ETH，約為自建的 2.5 倍。
+
+以 $L = 0.0030$ ETH 計，對手最高出價低於 $L$ 的 slot 只有 3.7%；全部 92,587 個得標價中低於 $L$ 的占 3.3%。也就是說**超過九成五的 slot 是競爭在定價，不是外部選項**。
+
+敏感度分析（$L$ 設為固定值時，$L$ 高於對手最高出價的 slot 比例）：
+
+| 假設的 $L$（ETH） | 0.001 | 0.002 | 0.005 | 0.01 | 0.02 |
+|---|---|---|---|---|---|
+| $L$ 才是決定因素的 slot | 0% | 0% | 21.7% | 62.7% | 86.7% |
+
+結論對 $L$ 的假設很敏感：$L$ 若是 0.005 而非 0.003，就有兩成的 slot 由外部選項定價。實際上 $L$ 會隨每個 slot 的鏈上擁擠程度變動，用單一數值只是粗估；而且未納入的兩個 relay 可能讓部分 Builder 區塊被誤認為自建區塊。
+
+### 3.6 預測四：鏈上看不到公平偏好
+
+- 分潤低於 20% 的出價在實驗室裡常被拒絕，但鏈上這類區塊（占 2.1%）照樣被 Proposer 採用；低於 50% 的占 20.9%，也都被採用。
+- 分潤高低可以由「對手出多少」和「誰得標」解釋（上面的迴歸），不需要公平偏好。
+- 機制上，MEV-Boost 軟體本來就是自動選最高出價，Proposer 沒有機會表達「這個分法不公平」。
+
+這符合命題 8：只要第二名夠強，公平偏好就不會影響結果。但要注意，分潤中位數 64% 落在「看起來還算公平」的範圍，**單看分潤分布無法排除公平偏好**；我們是靠預測一（價格貼著對手出價）和不同 Builder 之間的差異，才能說這是競爭的結果。
+
+### 3.7 小結
+
+| 預測 | 結果 |
+|---|---|
+| 一、得標價 ≈ 對手最高出價 | 成立：比值中位數 0.9997，73% 的 slot 差距在 5% 以內 |
+| 二、分潤隨對手強度上升 | 方向成立（係數 0.56）；但分潤中位數只有 64%，前兩大 Builder 留下更多 |
+| 三、外部選項很少決定價格 | 以代理值計只有 3.7% 的 slot；但對 $L$ 的假設敏感 |
+| 四、鏈上沒有公平偏好的痕跡 | 低分潤區塊照樣被採用；分潤可由競爭解釋 |
 
 ---
 
@@ -279,7 +423,7 @@ Gas 用量（`results/contract_test_output.txt:60-76`）：
 | `withdraw` | 29,898 |
 | 部署 | 867,048 |
 
-一局完整流程（開局＋2 次承諾＋2 次揭露＋3 人提領）約 58 萬 gas。
+一局完整流程（開局＋2 次承諾＋2 次揭露＋3 人提領）合計約 58 萬 gas（上表各項平均值相加，不含每筆交易的固定成本）。
 
 ### 4.5 用模擬玩家跑完整流程
 
@@ -302,4 +446,91 @@ Gas 用量（`results/contract_test_output.txt:60-76`）：
 - **尚未部署到 Sepolia 測試網**：部署需要錢包私鑰，腳本已備妥（`contracts/scripts/deploy.js`），步驟見 `contracts/README.md`。
 - **尚未做真人實驗**：需要招募受試者與前端介面。另外測試網代幣沒有價值，真人實驗的誘因設計（例如事後依結果發放實際報酬）需要另外處理。
 
-<!--CONCLUSION-->
+---
+
+## 5. 結論、限制與未來展望
+
+### 5.1 回答一開始的問題
+
+1. **均衡下 Proposer 應該分到多少？** $s^* = \max(V_2,\ L,\ \text{公平門檻})$。三股力量中最強的那個決定價格。只有一個 Builder 時是最後通牒；有競爭時，價格等於第二名的價值。
+2. **鏈上資料符合嗎？** 「價格貼著第二名的出價」符合得很好。但 Proposer 只拿到約 64%，不是接近 100%——因為第一名 Builder 的區塊價值明顯高於第二名願意出的價。**MEV-Boost 是一個「價格由競爭決定、但第一名有獨家優勢」的市場**，介於完全競爭與最後通牒之間。
+3. **公平偏好還在嗎？** 鏈上看不到，理論上也不需要：只要有競爭，公平偏好就不影響結果。真正需要擔心的是競爭消失的時候——那時沒有公平偏好可以保護 Proposer，只剩外部選項 $L$。
+
+### 5.2 對 PBS 機制設計的含意
+
+- **該監測的不是 Builder 家數或 HHI，而是第一名與第二名的差距。** 我們的資料中，每個 slot 有 21 家 Builder 出價，HHI 與家數對分潤都沒有解釋力；有解釋力的是對手的出價強度與得標者是誰。
+- **獨家訂單流是差距的來源。** 最大的 Builder 留下最多，這與 Gupta et al. (2023) 指出私有訂單流會造成 Builder 集中化的論點一致。
+- **外部選項是最後的防線。** 若 Builder 市場進一步集中到競爭失效，Proposer 的保底只剩自己建塊的價值；提高 $L$（例如讓更多交易走公開交易池）等於提高這條底線。
+
+### 5.3 限制
+
+- **$V$ 的量測是毛額**：Builder 事後退給訂單流提供者的錢量不到，所以 Builder 留下的三成多是上限。
+- **出價資料不完整**：兩個 relay 的出價清單被截斷在 500 筆，兩個 relay 連不上；約三成抽樣 slot 找不到得標出價的時間。
+- **145／1,000 個區塊因付款方式無法辨識而被排除**，可能偏向特定 Builder。
+- **對手的出價不等於對手的價值**：Builder 不一定把自己的價值全部出完，所以我們量到的是 $V_2$ 的下界。
+- **$L$ 只有粗略代理**，結論對它敏感。
+- **只有 14 天**，HHI 幾乎沒有變化，無法檢驗「集中度改變時分潤如何變化」。
+- **合約只用模擬玩家跑過**，沒有真人資料，也還沒部署到測試網。
+
+### 5.4 未來展望
+
+- 把 Searcher → Builder 與 Builder → Proposer 兩層串成一個模型。
+- 加入重複賽局與聲譽：Builder 每 12 秒就遇到一次同樣的對手。
+- 拉長資料期間（跨越 Builder 市占明顯變動的時期），並用交易層級資料估計每個 slot 的 $L$。
+- 部署合約到測試網，做真人實驗，比較「匿名鏈上環境」與傳統實驗室的出價與門檻。
+
+---
+
+## 6. 口頭報告分工（四人）
+
+每人負責一個部分，從頭到尾講自己那一塊並回答相關提問。以下時間以總長 15 分鐘估算，可等比例調整。人選是建議，可互換。
+
+| 順序 | 講者（建議） | 負責部分 | 要講的重點 | 用到的圖表 | 時間 |
+|---|---|---|---|---|---|
+| 1 | 曾士育 | 動機＋**第一部分 模型主體** | 最後通牒賽局是什麼、MEV 分潤為什麼像它；命題 1→2→3 一路加條件；核心結論「價格 = 第二名的價值」；四個可檢驗的預測 | 第 0 節對應表、1.5 的情境表、`model_share_vs_n.png` | 4 分 |
+| 2 | 林玎揚 | **第二部分 公平偏好與統整** | Fehr–Schmidt 效用與接受門檻（命題 5）；提議者最適出價表；「有競爭時公平偏好不起作用」（命題 8）；2.4 的總表 | `model_fs_threshold.png`、2.3 的機率表、2.4 總表 | 3 分 |
+| 3 | 鄧杰修 | **第三部分 鏈上資料實證** | 資料怎麼來、三個變數怎麼量；市場很集中但每個 slot 有 21 家在出價；預測一成立（比值 0.9997）；分潤只有 64% 與各 Builder 差異；迴歸；量測限制 | `emp_builder_share.png`、`emp_rival_ratio_hist.png`、`emp_share_hist.png`、迴歸表、3.7 小結表 | 5 分 |
+| 4 | 周家釩 | **第四部分 智能合約**＋結論 | 為什麼要 commit-reveal 與 strategy method；流程圖；安全性設計；測試與模擬結果；最後用 5.1 的三個回答收尾 | 4.2 流程圖、4.5 模擬結果表、5.1 | 3 分 |
+
+**各自要準備回答的問題：**
+
+- 第一部分：為什麼可以假設 Builder 知道彼此的價值？（答：MEV-Boost 出價公開、可加價，等同英式拍賣，不需要這個假設。）同價時為什麼由價值高者得標？
+- 第二部分：$\alpha$、$\beta$ 的數值哪來的？（Fehr & Schmidt 1999 表 III。）鏈上的 Proposer 是程式，談公平偏好有意義嗎？
+- 第三部分：為什麼分潤不是接近 100%？Builder 真的賺三成嗎？（不是，是毛額。）為什麼有對手出價比得標價高的情況？（資料截斷與 relay 時間差。）
+- 第四部分：後揭露的人看得到對方的數值，不會作弊嗎？不揭露會怎樣？為什麼不讓玩家自己出 pot？
+
+**共同待辦：** 製作簡報；把本報告與簡報連結填回 proposal 的 HackMD；（選做）部署合約到 Sepolia；彩排一次。
+
+---
+
+## 參考資料
+
+- Güth, W., Schmittberger, R., & Schwarze, B. (1982). An experimental analysis of ultimatum bargaining. *Journal of Economic Behavior & Organization*, 3(4), 367–388.
+- Fehr, E., & Schmidt, K. M. (1999). A theory of fairness, competition, and cooperation. *The Quarterly Journal of Economics*, 114(3), 817–868.
+- Roth, A. E., Prasnikar, V., Okuno-Fujiwara, M., & Zamir, S. (1991). Bargaining and market behavior in Jerusalem, Ljubljana, Pittsburgh, and Tokyo: An experimental study. *American Economic Review*, 81(5), 1068–1095.
+- Selten, R. (1967). Die Strategiemethode zur Erforschung des eingeschränkt rationalen Verhaltens im Rahmen eines Oligopolexperimentes. In *Beiträge zur experimentellen Wirtschaftsforschung*.
+- Daian, P., et al. (2020). Flash Boys 2.0: Frontrunning in decentralized exchanges, miner extractable value, and consensus instability. *IEEE Symposium on Security and Privacy*.
+- Heimbach, L., Kiffer, L., Ferreira Torres, C., & Wattenhofer, R. (2023). Ethereum's proposer-builder separation: Promises and realities. *ACM Internet Measurement Conference*.
+- Gupta, T., Pai, M. M., & Resnick, M. (2023). The centralizing effects of private order flow on proposer-builder separation. *Advances in Financial Technologies (AFT)*.
+- Öz, B., Sui, D., Thiery, T., & Matthes, F. (2024). Who wins Ethereum block building auctions and why? *Advances in Financial Technologies (AFT)*.
+- Flashbots. MEV-Boost 文件與 Relay Data API 規格。https://docs.flashbots.net/ 、https://flashbots.github.io/relay-specs/
+- Ethereum Foundation. Proposer-builder separation. https://ethereum.org/en/roadmap/pbs/
+
+---
+
+## 附錄：檔案與重現方式
+
+| 路徑 | 內容 |
+|---|---|
+| `analysis/model_check.py` | 第一、二部分的數值核對與理論圖 → `results/model_check.json` |
+| `analysis/01_fetch_delivered.py` | 抓 14 天的交付紀錄 |
+| `analysis/02_fetch_bids.py` | 抽 1,000 個 slot 抓全部出價 |
+| `analysis/03_fetch_chain.py`、`03b_fetch_payment.py` | 抓區塊內容、餘額、付款交易 |
+| `analysis/04_analyze.py` | 整理、檢驗、迴歸、畫圖 → `results/empirical.json`、`data/processed/slots.csv` |
+| `contracts/` | 合約、測試、模擬與部署腳本（說明見 `contracts/README.md`） |
+| `data/contract_sim/` | 合約模擬的逐局結果與摘要 |
+| `results/contract_test_output.txt` | 合約測試與 gas 用量輸出 |
+
+報告中的實證數字都出自 `results/empirical.json`，理論核對數字出自 `results/model_check.json`，合約模擬數字出自 `data/contract_sim/summary.json`。
+
+**授權**　凡是我們獨立推導的公式或概念，或我們寫的程式碼，都可供後人自由使用。
